@@ -1,14 +1,27 @@
-import requests
+from bale import Bot, InlineKeyboardMarkup, InlineKeyboardButton
 
-TOKEN = "1707286533:8RiZ3SLHubKYeU9qMV3WVWx2cKHuGVDIiMg"
+TOKEN = "YOUR_BALE_TOKEN"
 
-def send_message(chat_id, text):
-    url = f"https://tapi.bale.ai/bot{TOKEN}/sendMessage"
-    requests.post(url, json={"chat_id": chat_id, "text": text})
+bot = Bot(TOKEN)
 
-# تست کن
-try:
-    send_message("822951933", "سلام از ربات!")
-    print("✅ پیام رفت!")
-except Exception as e:
-    print(f"❌ خطا: {e}")
+@bot.event
+async def on_message(message):
+    if message.text == "/start":
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("💰 استعلام قیمت", callback_data="price")],
+            [InlineKeyboardButton("🛒 خرید", callback_data="buy")]
+        ])
+
+        await message.reply(
+            "🎨 به ربات فارس گالری خوش آمدید",
+            components=keyboard
+        )
+
+@bot.callback_query()
+async def callbacks(query):
+    if query.data == "price":
+        await query.message.reply("لطفاً نوع پرده را انتخاب کنید.")
+    elif query.data == "buy":
+        await query.message.reply("لطفاً اطلاعات سفارش را ارسال کنید.")
+
+bot.run()
