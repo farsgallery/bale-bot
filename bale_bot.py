@@ -1,6 +1,6 @@
 from bale import Bot, InlineKeyboardMarkup, InlineKeyboardButton
 
-TOKEN = "YOUR_BALE_TOKEN"
+TOKEN = "1707286533:8RiZ3SLHubKYeU9qMV3WVWx2cKHuGVDIiMg"
 
 bot = Bot(TOKEN)
 
