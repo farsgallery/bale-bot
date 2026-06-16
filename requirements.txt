@@ -1,3 +1,4 @@
 flask
 jdatetime
 python-bale-bot
+requests
