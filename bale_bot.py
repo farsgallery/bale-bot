@@ -5,7 +5,7 @@ import os
 
 TOKEN = "1707286533:8RiZ3SLHubKYeU9qMV3WVWx2cKHuGVDIiMg"
 
-app = Flask(**name**)
+app = Flask(__name__)
 
 @app.route("/")
 def home():
