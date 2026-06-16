@@ -26,5 +26,6 @@ async def on_message(message):
     if text == "/start":
         await message.reply("سلام 👋\n\nبه ربات خوش آمدید.")
 
+print(dir(Bot))
 print("Bot Started...")
 bot.run()
