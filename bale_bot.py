@@ -3,7 +3,7 @@ from bale.handlers import CommandHandler, MessageHandler
 from bale.checks import TEXT
 import datetime
 
-client = Bot(token="1707286533:8RiZ3SLHubKYeU9qMV3WVWx2cKHuGVDIiMg")
+client = Bot(token="1707286533:SfrV0VrqFr5qWoUC3O-Pte121jWlzA8W3dM")
 
 # قیمت‌ها
 PRICES = {
@@ -175,5 +175,4 @@ def get_order_type_keyboard():
         [MessageHandler("1️⃣ پرده شید ساده", order_shid_simple)],
         [MessageHandler("2️⃣ پرده شید بلک اوت", order_shid_blackout)],
         [MessageHandler("3️⃣ پرده زبرا", order_zebra)],
-        [MessageHandler("4️⃣ پرده کرکره فلزی", order_cercere)],
-        …
+        [MessageHandler("4️⃣ …
