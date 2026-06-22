@@ -1,177 +1,374 @@
-from bale import Bot, Message
-from bale.handlers import CommandHandler, MessageHandler
-from bale.checks import TEXT
-import datetime
+import asyncio
+import math
+from datetime import datetime
 
-client = Bot(token="1707286533:SfrV0VrqFr5qWoUC3O-Pte121jWlzA8W3dM")
+from bale import Bot, Message, Update
+from bale.handlers import CommandHandler
+from bale.checks import Author, TEXT
 
-# قیمت‌ها
-PRICES = {
-    "shid_simple": 1980000,
-    "shid_blackout": 3350000,
-    "zebra": 2325000,
-    "cercere": 2970000
+TOKEN = "1707286533:SfrV0VrqFr5qWoUC3O-Pte121jWlzA8W3dM"
+
+client = Bot(token=TOKEN)
+
+# -----------------------------
+# اطلاعات فروشگاه
+# -----------------------------
+
+ADDRESS = """
+📍 آدرس:
+شیراز، خیابان قصردشت، چهارراه عفیف آباد،
+ابتدای بلوار آوینی، نبش کوچه 1
+مجموعه هنری ایران دکوراسیون (فارس گالری)
+"""
+
+PHONE = "☎️ 07136277172"
+
+WORK_TIME = """
+🕒 ساعات کاری:
+صبح: 09:00 تا 13:00
+عصر: 17:00 تا 21:00
+"""
+
+WEBSITE = "🌐 www.FarsGallery.com"
+
+# -----------------------------
+# محصولات
+# -----------------------------
+
+PRODUCTS = {
+    "شید ساده": {
+        "price": 1980000,
+        "min_height": 200,
+        "min_area": 2,
+        "colors": ["⚪ سفید", "🔘 طوسی", "🟤 کرم"]
+    },
+    "شید بلک اوت": {
+        "price": 3350000,
+        "min_height": 200,
+        "min_area": 2,
+        "colors": ["⚪ سفید", "🔘 طوسی", "🟤 کرم"]
+    },
+    "زبرا": {
+        "price": 2325000,
+        "min_height": 150,
+        "min_area": 1.5,
+        "colors": ["⚪ سفید", "🔘 طوسی", "🟤 قهوه ای"]
+    },
+    "کرکره فلزی": {
+        "price": 2970000,
+        "min_height": 0,
+        "min_area": 1.5,
+        "colors": ["⚪ سفید", "🔘 طوسی", "⚫ مشکی"]
+    }
 }
 
-# منوی اصلی
-MAIN_MENU = """
-به ربات مجموعه هُنری فــارس گـالری خوش آمدید
-میتوانید برای استعلام قیمت بر اساس ابعاد و اندازه پرده مورد نظر خود و همچنین ثبت سفارش از این ربات به راحتی استفاده کنید:
+
+# -----------------------------
+# ابزارها
+# -----------------------------
+
+def today():
+    return datetime.now().strftime("%Y/%m/%d")
+
+
+def format_price(num):
+    return "{:,}".format(int(num))
+
+
+async def ask_text(message, text):
+    await message.reply(text)
+
+    update = await client.wait_for(
+        Author(message.author.id) & TEXT,
+        timeout=300
+    )
+
+    return update.message.text
+
+
+async def calculate_price(message, product_name):
+
+    data = PRODUCTS[product_name]
+
+    width = await ask_text(
+        message,
+        f"📏 عرض {product_name} را به سانتیمتر وارد کنید:"
+    )
+
+    height = await ask_text(
+        message,
+        f"📐 ارتفاع {product_name} را به سانتیمتر وارد کنید:"
+    )
+
+    try:
+        width = float(width)
+        height = float(height)
+    except:
+        return await message.reply("❌ فقط عدد وارد کنید.")
+
+    notes = []
+
+    original_height = height
+
+    if data["min_height"] > 0 and height < data["min_height"]:
+        notes.append(
+            f"⚠️ طبق قوانین {product_name} ارتفاع کمتر از "
+            f"{data['min_height']} سانتیمتر محاسبه نمی‌شود "
+            f"و {data['min_height']} در نظر گرفته شد."
+        )
+
+        height = data["min_height"]
+
+    area = (width * height) / 10000
+
+    if area < data["min_area"]:
+        notes.append(
+            f"⚠️ طبق قوانین {product_name} حداقل متراژ "
+            f"{data['min_area']} متر مربع محاسبه می‌شود."
+        )
+
+        area = data["min_area"]
+
+    final_price = area * data["price"]
+
+    text = f"""
+📅 تاریخ: {today()}
+
+🪟 نوع پرده: {product_name}
+
+📏 عرض: {width:.0f} سانتیمتر
+📐 ارتفاع وارد شده: {original_height:.0f} سانتیمتر
+📐 ارتفاع محاسبه شده: {height:.0f} سانتیمتر
+
+📦 متراژ نهایی:
+{area:.2f} متر مربع
+
+💰 قیمت واحد:
+{format_price(data['price'])} تومان
+
+💵 قیمت نهایی:
+{format_price(final_price)} تومان
 """
 
-# منوی استعلام قیمت
-PRICE_MENU = """
-📊 **استعلام قیمت پرده**
+    if notes:
+        text += "\n\n" + "\n".join(notes)
 
-1️⃣ پرده شید ساده
-2️⃣ پرده شید بلک اوت
-3️⃣ پرده زبرا
-4️⃣ پرده کرکره فلزی
+    text += """
 
-🔙 بازگشت
+━━━━━━━━━━━━━━
+
+🚚 سه روز کاری تحویل
+
+📦 ارسال به سراسر کشور
+
+🛡️ 2 سال ضمانت
+
+😍 کیفیت درجه یک
+دیگه چی میخوای؟ 😍
+
+اگر مایل هستید رنگ بندی را مشاهده کنید
+کلمه زیر را ارسال کنید:
+
+🎨 رنگ بندی
 """
 
-# منوی رنگ‌ها
-COLOR_MENU = """
-🎨 **انتخاب رنگ**
+    await message.reply(text)
 
-1️⃣ سفید
-2️⃣ طوسی
-3️⃣ کرم
-4️⃣ مشکی
-5️⃣ قهوه‌ای
+    color_request = await ask_text(
+        message,
+        "🎨 برای مشاهده رنگ بندی بنویس:\nرنگ بندی"
+    )
 
-🔙 بازگشت
-"""
+    if "رنگ" in color_request:
 
-# منوی تماس با ما
-CONTACT_MENU = """
-📞 **تماس با ما**
+        colors = "\n".join(data["colors"])
 
-📍 آدرس: شیراز خیابان قصردشت چهارراه عفیف آباد ابتدای بلوار آوینی نبش کوچه یک مجموعه گالری هنری ایران دکوراسیون (فارس گالری)
+        await message.reply(
+            f"🎨 رنگ های موجود {product_name}\n\n{colors}"
+        )
 
-📱 شماره تماس: 07136277172
+    await message.reply(
+        "🔄 برای محاسبه مجدد /start را ارسال کنید."
+    )
 
-⏰ ساعات کاری:
-🌅 صبح: 09:00 تا 13:00
-🌆 عصر: 17:00 تا 21:00
 
-🌐 وب‌سایت: [www.FarsGallery.com](http://www.farsgallery.com/)
+# -----------------------------
+# شروع
+# -----------------------------
 
-🔙 بازگشت
-"""
+@client.listen("on_ready")
+async def ready():
+    print(client.user, "READY")
 
-# منوی راهنمایی
-GUIDE_MENU = """
-💡 **راهنمایی و پیشنهاد نوع پرده**
 
-1️⃣ اداری و تجاری
-2️⃣ مسکونی
+@client.handle(CommandHandler("start"))
+async def start(message: Message):
 
-🔙 بازگشت
-"""
+    text = f"""
+🎨 به ربات مجموعه هنری فارس گالری خوش آمدید
 
-# منوی ثبت سفارش
-ORDER_MENU = """
-🛒 **ثبت سفارش**
+📅 تاریخ امروز:
+{today()}
 
-1️⃣ پرده شید ساده
-2️⃣ پرده شید بلک اوت
-3️⃣ پرده زبرا
-4️⃣ پرده کرکره فلزی
-
-🔙 بازگشت
-"""
-
-# منوی شروع
-START_MENU = """
-🚀 **شروع**
+برای ادامه یکی از گزینه های زیر را ارسال کنید:
 
 1️⃣ استعلام قیمت
+
 2️⃣ ثبت سفارش
-3️⃣ راهنمایی و پیشنهاد
+
+3️⃣ راهنمای انتخاب پرده
+
 4️⃣ تماس با ما
-
-🔙 خروج
 """
 
-# منوی تکرار محاسبه
-RECALC_MENU = """
-🔄 **تکرار محاسبه**
+    await message.reply(text)
 
-1️⃣ بله، دوباره حساب کن
-2️⃣ خیر، منو را باز کن
+    try:
+        update = await client.wait_for(
+            Author(message.author.id) & TEXT,
+            timeout=300
+        )
+    except:
+        return
 
-🔙 بازگشت
-"""
+    choice = update.message.text
 
-# منوی انتخاب نوع پرده برای ثبت سفارش
-ORDER_TYPE_MENU = """
-🛒 **ثبت سفارش**
+    # -----------------------------------
+    # استعلام قیمت
+    # -----------------------------------
 
-1️⃣ پرده شید ساده
-2️⃣ پرده شید بلک اوت
-3️⃣ پرده زبرا
-4️⃣ پرده کرکره فلزی
+    if "1" in choice or "استعلام" in choice:
 
-🔙 بازگشت
-"""
+        await update.message.reply("""
+🪟 نوع پرده را انتخاب کنید:
 
-# لینک‌ها
-LINKS = {
-    "shid_simple": "https://farsgallery.com/product-category/curtains/shid/",
-    "shid_blackout": "https://farsgallery.com/product-category/curtains/shid/",
-    "zebra": "https://farsgallery.com/product-category/curtains/zebra/simple/",
-    "cercere": "https://farsgallery.com/product-category/curtains/cercere/25mil/"
-}
+1- شید ساده
+2- شید بلک اوت
+3- زبرا
+4- کرکره فلزی
+""")
 
-# منوهای دکمه‌ای
-def get_main_keyboard():
-    return [
-        [MessageHandler("1️⃣ استعلام قیمت", price_menu)],
-        [MessageHandler("2️⃣ ثبت سفارش", order_menu)],
-        [MessageHandler("3️⃣ راهنمایی و پیشنهاد", guide_menu)],
-        [MessageHandler("4️⃣ تماس با ما", contact_menu)],
-        [MessageHandler("🔙 خروج", exit_bot)]
-    ]
+        update2 = await client.wait_for(
+            Author(message.author.id) & TEXT,
+            timeout=300
+        )
 
-def get_price_keyboard():
-    return [
-        [MessageHandler("1️⃣ پرده شید ساده", shid_simple_calc)],
-        [MessageHandler("2️⃣ پرده شید بلک اوت", shid_blackout_calc)],
-        [MessageHandler("3️⃣ پرده زبرا", zebra_calc)],
-        [MessageHandler("4️⃣ پرده کرکره فلزی", cercere_calc)],
-        [MessageHandler("🔙 بازگشت", main_menu)]
-    ]
+        product = update2.message.text
 
-def get_color_keyboard():
-    return [
-        [MessageHandler("1️⃣ سفید", select_color)],
-        [MessageHandler("2️⃣ طوسی", select_color)],
-        [MessageHandler("3️⃣ کرم", select_color)],
-        [MessageHandler("4️⃣ مشکی", select_color)],
-        [MessageHandler("5️⃣ قهوه‌ای", select_color)],
-        [MessageHandler("🔙 بازگشت", price_menu)]
-    ]
+        if "1" in product or "شید ساده" in product:
+            await calculate_price(update2.message, "شید ساده")
 
-def get_guide_keyboard():
-    return [
-        [MessageHandler("1️⃣ اداری و تجاری", commercial_type)],
-        [MessageHandler("2️⃣ مسکونی", residential_type)],
-        [MessageHandler("🔙 بازگشت", main_menu)]
-    ]
+        elif "2" in product or "بلک" in product:
+            await calculate_price(update2.message, "شید بلک اوت")
 
-def get_order_keyboard():
-    return [
-        [MessageHandler("1️⃣ پرده شید ساده", order_shid_simple)],
-        [MessageHandler("2️⃣ پرده شید بلک اوت", order_shid_blackout)],
-        [MessageHandler("3️⃣ پرده زبرا", order_zebra)],
-        [MessageHandler("4️⃣ پرده کرکره فلزی", order_cercere)],
-        [MessageHandler("🔙 بازگشت", main_menu)]
-    ]
+        elif "3" in product or "زبرا" in product:
+            await calculate_price(update2.message, "زبرا")
 
-def get_order_type_keyboard():
-    return [
-        [MessageHandler("1️⃣ پرده شید ساده", order_shid_simple)],
-        [MessageHandler("2️⃣ پرده شید بلک اوت", order_shid_blackout)],
-        [MessageHandler("3️⃣ پرده زبرا", order_zebra)],
+        elif "4" in product or "کرکره" in product:
+            await calculate_price(update2.message, "کرکره فلزی")
+
+    # -----------------------------------
+    # راهنما
+    # -----------------------------------
+
+    elif "3" in choice or "راهنما" in choice:
+
+        await update.message.reply("""
+🏠 نوع کاربری را انتخاب کنید:
+
+1- مسکونی
+2- اداری / تجاری
+""")
+
+        update3 = await client.wait_for(
+            Author(update.message.author.id) & TEXT,
+            timeout=300
+        )
+
+        answer = update3.message.text
+
+        if "اداری" in answer or "2" in answer:
+
+            await update3.message.reply("""
+🏢 پیشنهاد ما:
+
+🪟 پرده کرکره فلزی
+
+برای استعلام قیمت:
+/start
+""")
+
+        else:
+
+            await update3.message.reply("""
+🏠 پیشنهاد ما:
+
+🪟 پرده شید ساده
+
+یا
+
+🪟 پرده زبرا
+
+برای استعلام قیمت:
+/start
+""")
+
+    # -----------------------------------
+    # ثبت سفارش
+    # -----------------------------------
+
+    elif "2" in choice or "ثبت سفارش" in choice:
+
+        await update.message.reply("""
+🛒 نوع پرده را انتخاب کنید:
+
+1- شید ساده (پیشنهاد مسکونی)
+
+2- شید بلک اوت
+(پیشنهاد اتاق کامپیوتر و ویدیو پروژکتور)
+
+3- زبرا (پیشنهاد مسکونی)
+
+4- کرکره فلزی
+(پیشنهاد اداری و تجاری)
+""")
+
+        update4 = await client.wait_for(
+            Author(update.message.author.id) & TEXT,
+            timeout=300
+        )
+
+        p = update4.message.text
+
+        if "1" in p:
+            await update4.message.reply(
+                "🔗 لینک محصول شید ساده:\nYOUR_LINK"
+            )
+
+        elif "2" in p:
+            await update4.message.reply(
+                "🔗 لینک محصول شید بلک اوت:\nYOUR_LINK"
+            )
+
+        elif "3" in p:
+            await update4.message.reply(
+                "🔗 لینک محصول زبرا:\nYOUR_LINK"
+            )
+
+        elif "4" in p:
+            await update4.message.reply(
+                "🔗 لینک محصول کرکره فلزی:\nYOUR_LINK"
+            )
+
+    # -----------------------------------
+    # تماس با ما
+    # -----------------------------------
+
+    elif "4" in choice or "تماس" in choice:
+
+        await update.message.reply(
+            f"{ADDRESS}\n\n{PHONE}\n\n{WORK_TIME}\n\n{WEBSITE}"
+        )
+
+
+client.run()
