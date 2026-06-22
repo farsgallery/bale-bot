@@ -1,33 +1,23 @@
-import logging
-import jdatetime
-
-from telegram import (
-    Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    ReplyKeyboardMarkup,
-)
-
-from telegram.error import BadRequest
-
-CHANNEL_USERNAME = '@irandecoration_gallery'
-
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    CallbackQueryHandler,
-    ContextTypes,
-    ConversationHandler,
-    filters,
-)
-
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
-)
+from flask import Flask
+from threading import Thread
+from bale import Bot
+import os
 
 TOKEN = "1707286533:SfrV0VrqFr5qWoUC3O-Pte121jWlzA8W3dM"
+
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "Bale Bot Running"
+
+def run_web():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
+
+Thread(target=run_web).start()
+
+bot = Bot(TOKEN)
 
 # ---------------- تنظیمات پرده ----------------
 
