@@ -1,374 +1,709 @@
-import asyncio
-import math
-from datetime import datetime
+import logging
+import jdatetime
 
-from bale import Bot, Message, Update
-from bale.handlers import CommandHandler
-from bale.checks import Author, TEXT
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    ReplyKeyboardMarkup,
+)
 
-TOKEN = "1707286533:SfrV0VrqFr5qWoUC3O-Pte121jWlzA8W3dM"
+from telegram.error import BadRequest
 
-client = Bot(token=TOKEN)
+CHANNEL_USERNAME = '@irandecoration_gallery'
 
-# -----------------------------
-# اطلاعات فروشگاه
-# -----------------------------
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    CallbackQueryHandler,
+    ContextTypes,
+    ConversationHandler,
+    filters,
+)
 
-ADDRESS = """
-📍 آدرس:
-شیراز، خیابان قصردشت، چهارراه عفیف آباد،
-ابتدای بلوار آوینی، نبش کوچه 1
-مجموعه هنری ایران دکوراسیون (فارس گالری)
-"""
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
 
-PHONE = "☎️ 07136277172"
+TOKEN = "8737297309:AAFS-hg2x4DbTWf0HDrE2Iej7BN5QP2mwqs"
 
-WORK_TIME = """
-🕒 ساعات کاری:
-صبح: 09:00 تا 13:00
-عصر: 17:00 تا 21:00
-"""
-
-WEBSITE = "🌐 www.FarsGallery.com"
-
-# -----------------------------
-# محصولات
-# -----------------------------
+# ---------------- تنظیمات پرده ----------------
 
 PRODUCTS = {
-    "شید ساده": {
+
+    "shid_simple": {
+        "name": "🪟 پرده شید ساده",
         "price": 1980000,
         "min_height": 200,
         "min_area": 2,
-        "colors": ["⚪ سفید", "🔘 طوسی", "🟤 کرم"]
+        "colors": ["⚪ سفید", "🌫 طوسی", "🟤 کرم"],
+        "link": "https://farsgallery.com/product-category/curtains/shid/",
     },
-    "شید بلک اوت": {
+
+    "shid_blackout": {
+        "name": "🌑 پرده شید بلک اوت",
         "price": 3350000,
         "min_height": 200,
         "min_area": 2,
-        "colors": ["⚪ سفید", "🔘 طوسی", "🟤 کرم"]
+        "colors": ["⚪ سفید", "🌫 طوسی", "🟤 کرم"],
+        "link": "https://farsgallery.com/product-category/curtains/shid/",
     },
-    "زبرا": {
+
+    "zebra": {
+        "name": "🦓 پرده زبرا",
         "price": 2325000,
         "min_height": 150,
         "min_area": 1.5,
-        "colors": ["⚪ سفید", "🔘 طوسی", "🟤 قهوه ای"]
+        "colors": ["⚪ سفید", "🌫 طوسی", "🤎 قهوه ای"],
+        "link": "https://farsgallery.com/product-category/curtains/zebra/simple/",
     },
-    "کرکره فلزی": {
+
+    "metal": {
+        "name": "🏢 پرده کرکره فلزی",
         "price": 2970000,
         "min_height": 0,
         "min_area": 1.5,
-        "colors": ["⚪ سفید", "🔘 طوسی", "⚫ مشکی"]
-    }
+        "colors": ["⚪ سفید", "🌫 طوسی", "⚫ مشکی"],
+        "link": "https://farsgallery.com/product-category/curtains/cercere/25mil/",
+    },
 }
 
+# ---------------- مراحل ----------------
 
-# -----------------------------
-# ابزارها
-# -----------------------------
+MAIN_MENU, SELECT_PRODUCT, GET_WIDTH, GET_HEIGHT = range(4)
 
-def today():
-    return datetime.now().strftime("%Y/%m/%d")
+# ---------------- منوی دائمی ----------------
+
+reply_menu = ReplyKeyboardMarkup(
+
+    [
+        ["🏠 شروع"],
+        ["💡 راهنمایی و پیشنهاد نوع پرده"],
+        ["🌐 وب سایت خرید آنلاین"],
+        ["🕒 ساعات کاری"],
+        ["📍 آدرس و شماره تماس"],
+    ],
+
+    resize_keyboard=True
+)
 
 
-def format_price(num):
-    return "{:,}".format(int(num))
+async def is_member(user_id, context):
+    try:
+        member = await context.bot.get_chat_member(CHANNEL_USERNAME, user_id)
+        return member.status in ["creator","administrator","member"]
+    except Exception:
+        return False
 
+async def force_join(update, context):
+    keyboard=[
+        [InlineKeyboardButton("📢 عضویت در کانال", url=f"https://t.me/{CHANNEL_USERNAME.replace('@','')}")],
+        [InlineKeyboardButton("✅ تایید عضویت", callback_data="check_join")]
+    ]
+    msg="❌ برای استفاده از ربات ابتدا عضو کانال شوید."
+    if update.message:
+        await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+    else:
+        await update.callback_query.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
 
-async def ask_text(message, text):
-    await message.reply(text)
+async def check_join(update, context):
+    query = update.callback_query
+    await query.answer()
 
-    update = await client.wait_for(
-        Author(message.author.id) & TEXT,
-        timeout=300
+    if not await is_member(query.from_user.id, context):
+        await query.message.reply_text("❌ هنوز عضو کانال نشده‌اید.")
+        return ConversationHandler.END
+
+    text = """
+🎨 به ربات مجموعه هُنری فــارس گـالری خوش آمدید
+
+✨ میتوانید برای استعلام قیمت پرده و ثبت سفارش از این ربات استفاده کنید.
+"""
+
+    keyboard = [
+        [InlineKeyboardButton("1️⃣ میخواهم فقط استعلام قیمت پرده بگیرم", callback_data="price")],
+        [InlineKeyboardButton("2️⃣ میخواهم ثبت سفارش انجام بدم", callback_data="order")]
+    ]
+
+    await query.message.reply_text(text, reply_markup=reply_menu)
+    await query.message.reply_text(
+        "👇 یکی از گزینه ها را انتخاب کنید:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-    return update.message.text
+    return MAIN_MENU
 
+# ---------------- استارت ----------------
 
-async def calculate_price(message, product_name):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    data = PRODUCTS[product_name]
+    if not await is_member(update.effective_user.id, context):
+        await force_join(update, context)
+        return ConversationHandler.END
 
-    width = await ask_text(
-        message,
-        f"📏 عرض {product_name} را به سانتیمتر وارد کنید:"
+    text = """
+🎨 به ربات مجموعه هُنری فــارس گـالری خوش آمدید
+
+✨ میتوانید برای استعلام قیمت پرده و ثبت سفارش از این ربات استفاده کنید.
+"""
+
+    keyboard = [
+
+        [
+            InlineKeyboardButton(
+                "1️⃣ میخواهم فقط استعلام قیمت پرده بگیرم",
+                callback_data="price"
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "2️⃣ میخواهم ثبت سفارش انجام بدم",
+                callback_data="order"
+            )
+        ],
+    ]
+
+    if update.message:
+
+        await update.message.reply_text(
+            text,
+            reply_markup=reply_menu
+        )
+
+        await update.message.reply_text(
+            "👇 یکی از گزینه ها را انتخاب کنید:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+    elif update.callback_query:
+
+        query = update.callback_query
+
+        await query.answer()
+
+        await query.message.reply_text(
+            text,
+            reply_markup=reply_menu
+        )
+
+        await query.message.reply_text(
+            "👇 یکی از گزینه ها را انتخاب کنید:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+    return MAIN_MENU
+
+# ---------------- منوی ثابت ----------------
+
+async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    text = update.message.text
+
+    if text == "🏠 شروع":
+        return await start(update, context)
+
+    elif text == "📍 آدرس و شماره تماس":
+
+        await update.message.reply_text(
+            "📍 شیراز خیابان قصردشت چهارراه عفیف آباد "
+            "ابتدای بلوار آوینی نبش کوچه یک\n\n"
+            "🏢 مجموعه گالری هنری ایران دکوراسیون (فارس گالری)\n\n"
+            "📞 07136277172"
+        )
+
+    elif text == "🕒 ساعات کاری":
+
+        await update.message.reply_text(
+            "🕒 صبح 09:00 تا 13:00\n"
+            "🌙 عصر 17:00 تا 21:00"
+        )
+
+    elif text == "🌐 وب سایت خرید آنلاین":
+
+        await update.message.reply_text(
+            "🌐 www.FarsGallery.com"
+        )
+
+    elif text == "💡 راهنمایی و پیشنهاد نوع پرده":
+
+        keyboard = [
+
+            [
+                InlineKeyboardButton(
+                    "🏢 اداری و تجاری",
+                    callback_data="office"
+                )
+            ],
+
+            [
+                InlineKeyboardButton(
+                    "🏠 مسکونی",
+                    callback_data="home"
+                )
+            ],
+        ]
+
+        await update.message.reply_text(
+            "👇 برای چه فضایی میخواهید؟",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+# ---------------- راهنمایی ----------------
+
+async def suggestion(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    if query.data == "office":
+
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "🏢 پرده کرکره فلزی",
+                    callback_data="metal"
+                )
+            ]
+        ]
+
+        await query.message.reply_text(
+            "✅ پیشنهاد ما برای فضای اداری و تجاری:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+        return SELECT_PRODUCT
+
+    elif query.data == "home":
+
+        keyboard = [
+
+            [
+                InlineKeyboardButton(
+                    "🪟 پرده شید ساده",
+                    callback_data="shid_simple"
+                )
+            ],
+
+            [
+                InlineKeyboardButton(
+                    "🦓 پرده زبرا",
+                    callback_data="zebra"
+                )
+            ],
+        ]
+
+        await query.message.reply_text(
+            "✅ پیشنهاد ما برای فضای مسکونی:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+        return SELECT_PRODUCT
+
+# ---------------- منوی اصلی ----------------
+
+async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    if query.data == "price":
+
+        keyboard = [
+
+            [
+                InlineKeyboardButton(
+                    "🪟 پرده شید ساده",
+                    callback_data="shid_simple"
+                )
+            ],
+
+            [
+                InlineKeyboardButton(
+                    "🌑 پرده شید بلک اوت",
+                    callback_data="shid_blackout"
+                )
+            ],
+
+            [
+                InlineKeyboardButton(
+                    "🦓 پرده زبرا",
+                    callback_data="zebra"
+                )
+            ],
+
+            [
+                InlineKeyboardButton(
+                    "🏢 پرده کرکره فلزی",
+                    callback_data="metal"
+                )
+            ],
+        ]
+
+        await query.message.reply_text(
+            "👇 نوع پرده را انتخاب کنید:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+        return SELECT_PRODUCT
+
+    elif query.data == "order":
+
+        keyboard = [
+
+            [
+                InlineKeyboardButton(
+                    "🪟 پرده شید ساده",
+                    callback_data="order_shid_simple"
+                )
+            ],
+
+            [
+                InlineKeyboardButton(
+                    "🌑 پرده شید بلک اوت",
+                    callback_data="order_shid_blackout"
+                )
+            ],
+
+            [
+                InlineKeyboardButton(
+                    "🦓 پرده زبرا",
+                    callback_data="order_zebra"
+                )
+            ],
+
+            [
+                InlineKeyboardButton(
+                    "🏢 پرده کرکره فلزی",
+                    callback_data="order_metal"
+                )
+            ],
+        ]
+
+        await query.message.reply_text(
+            "👇 چه نوع پرده ای میخواهید؟",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+        return MAIN_MENU
+
+# ---------------- لینک سفارش ----------------
+
+async def order_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    data = {
+
+        "order_shid_simple":
+        "🪟 پرده شید ساده\n"
+        "🏠 پیشنهاد ما برای مسکونی\n\n"
+        "🔗 لینک خرید:\nhttps://farsgallery.com/product-category/curtains/shid/",
+
+        "order_shid_blackout":
+        "🌑 پرده شید بلک اوت\n"
+        "💻 مناسب اداری و ویدیو پروژکتور\n\n"
+        "🔗 لینک خرید:\nhttps://farsgallery.com/product-category/curtains/shid/",
+
+        "order_zebra":
+        "🦓 پرده زبرا\n"
+        "🏠 پیشنهاد ما برای مسکونی\n\n"
+        "🔗 لینک خرید:\nhttps://farsgallery.com/product-category/curtains/zebra/simple/",
+
+        "order_metal":
+        "🏢 پرده کرکره فلزی\n"
+        "🏬 مناسب اداری و تجاری\n\n"
+        "🔗 لینک خرید:\nhttps://farsgallery.com/product-category/curtains/cercere/25mil/",
+    }
+
+    await query.message.reply_text(data[query.data])
+
+# ---------------- انتخاب پرده ----------------
+
+async def select_product(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    context.user_data["product"] = query.data
+
+    await query.message.reply_text(
+        "📐 عرض را به سانتیمتر وارد کنید:"
     )
 
-    height = await ask_text(
-        message,
-        f"📐 ارتفاع {product_name} را به سانتیمتر وارد کنید:"
-    )
+    return GET_WIDTH
+
+# ---------------- عرض ----------------
+
+async def get_width(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    if update.message.text in ["🏠 شروع","💡 راهنمایی و پیشنهاد نوع پرده","🌐 وب سایت خرید آنلاین","🕒 ساعات کاری","📍 آدرس و شماره تماس"]:
+        return await menu_handler(update, context)
 
     try:
-        width = float(width)
-        height = float(height)
+
+        width = float(update.message.text)
+
+        context.user_data["width"] = width
+
+        await update.message.reply_text(
+            "📏 ارتفاع را به سانتیمتر وارد کنید:"
+        )
+
+        return GET_HEIGHT
+
     except:
-        return await message.reply("❌ فقط عدد وارد کنید.")
 
-    notes = []
-
-    original_height = height
-
-    if data["min_height"] > 0 and height < data["min_height"]:
-        notes.append(
-            f"⚠️ طبق قوانین {product_name} ارتفاع کمتر از "
-            f"{data['min_height']} سانتیمتر محاسبه نمی‌شود "
-            f"و {data['min_height']} در نظر گرفته شد."
+        await update.message.reply_text(
+            "❌ فقط عدد وارد کنید"
         )
 
-        height = data["min_height"]
+        return GET_WIDTH
 
-    area = (width * height) / 10000
+# ---------------- ارتفاع و محاسبه ----------------
 
-    if area < data["min_area"]:
-        notes.append(
-            f"⚠️ طبق قوانین {product_name} حداقل متراژ "
-            f"{data['min_area']} متر مربع محاسبه می‌شود."
-        )
+async def get_height(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-        area = data["min_area"]
+    if update.message.text in ["🏠 شروع","💡 راهنمایی و پیشنهاد نوع پرده","🌐 وب سایت خرید آنلاین","🕒 ساعات کاری","📍 آدرس و شماره تماس"]:
+        return await menu_handler(update, context)
 
-    final_price = area * data["price"]
+    try:
 
-    text = f"""
-📅 تاریخ: {today()}
+        height = float(update.message.text)
 
-🪟 نوع پرده: {product_name}
+        product_key = context.user_data["product"]
 
-📏 عرض: {width:.0f} سانتیمتر
-📐 ارتفاع وارد شده: {original_height:.0f} سانتیمتر
-📐 ارتفاع محاسبه شده: {height:.0f} سانتیمتر
+        product = PRODUCTS[product_key]
 
-📦 متراژ نهایی:
-{area:.2f} متر مربع
+        width = context.user_data["width"]
 
-💰 قیمت واحد:
-{format_price(data['price'])} تومان
+        warning_text = ""
+
+        if product["min_height"] > 0:
+
+            if height < product["min_height"]:
+
+                warning_text += (
+                    f"\n⚠️ ارتفاع کمتر از "
+                    f"{product['min_height']} سانت بود "
+                    f"و طبق قوانین همان "
+                    f"{product['min_height']} محاسبه شد."
+                )
+
+                height = product["min_height"]
+
+        area = (width / 100) * (height / 100)
+
+        if area < product["min_area"]:
+
+            warning_text += (
+                f"\n⚠️ متراژ کمتر از "
+                f"{product['min_area']} متر مربع بود "
+                f"و طبق قوانین همان "
+                f"{product['min_area']} محاسبه شد."
+            )
+
+            area = product["min_area"]
+
+        total_price = area * product["price"]
+
+        today = jdatetime.date.today().strftime("%Y/%m/%d")
+
+        result = f"""
+📅 قیمت امروز
+🗓 تاریخ: {today}
+
+{product['name']}
+
+📐 عرض:
+{width:.0f} سانتیمتر
+
+📏 ارتفاع:
+{height:.0f} سانتیمتر
+{warning_text}
+
+🧮 متر مربع:
+{area:.2f}
+
+💰 قیمت واحد هر مترمربع:
+{product['price']:,} تومان
 
 💵 قیمت نهایی:
-{format_price(final_price)} تومان
+{total_price:,.0f} تومان
+
+📦 هر شهری باشی ارسال میکنم
+🛡 2 سال ضمانت
+🚚 سه روز کاری تحویلت میدم
+✨ کیفیت درجه یکه 😍
 """
 
-    if notes:
-        text += "\n\n" + "\n".join(notes)
+        keyboard = [
 
-    text += """
+            [
+                InlineKeyboardButton(
+                    "🎨 رنگ بندی",
+                    callback_data=f"color_{product_key}"
+                )
+            ],
 
-━━━━━━━━━━━━━━
+            [
+                InlineKeyboardButton(
+                    "🛒 میخوای خرید کنی؟",
+                    url=product["link"]
+                )
+            ],
 
-🚚 سه روز کاری تحویل
+            [
+                InlineKeyboardButton(
+                    "🔄 شروع دوباره",
+                    callback_data="back_start"
+                )
+            ]
+        ]
 
-📦 ارسال به سراسر کشور
-
-🛡️ 2 سال ضمانت
-
-😍 کیفیت درجه یک
-دیگه چی میخوای؟ 😍
-
-اگر مایل هستید رنگ بندی را مشاهده کنید
-کلمه زیر را ارسال کنید:
-
-🎨 رنگ بندی
-"""
-
-    await message.reply(text)
-
-    color_request = await ask_text(
-        message,
-        "🎨 برای مشاهده رنگ بندی بنویس:\nرنگ بندی"
-    )
-
-    if "رنگ" in color_request:
-
-        colors = "\n".join(data["colors"])
-
-        await message.reply(
-            f"🎨 رنگ های موجود {product_name}\n\n{colors}"
+        await update.message.reply_text(
+            result,
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
-    await message.reply(
-        "🔄 برای محاسبه مجدد /start را ارسال کنید."
-    )
+        return MAIN_MENU
 
-
-# -----------------------------
-# شروع
-# -----------------------------
-
-@client.listen("on_ready")
-async def ready():
-    print(client.user, "READY")
-
-
-@client.handle(CommandHandler("start"))
-async def start(message: Message):
-
-    text = f"""
-🎨 به ربات مجموعه هنری فارس گالری خوش آمدید
-
-📅 تاریخ امروز:
-{today()}
-
-برای ادامه یکی از گزینه های زیر را ارسال کنید:
-
-1️⃣ استعلام قیمت
-
-2️⃣ ثبت سفارش
-
-3️⃣ راهنمای انتخاب پرده
-
-4️⃣ تماس با ما
-"""
-
-    await message.reply(text)
-
-    try:
-        update = await client.wait_for(
-            Author(message.author.id) & TEXT,
-            timeout=300
-        )
     except:
-        return
 
-    choice = update.message.text
-
-    # -----------------------------------
-    # استعلام قیمت
-    # -----------------------------------
-
-    if "1" in choice or "استعلام" in choice:
-
-        await update.message.reply("""
-🪟 نوع پرده را انتخاب کنید:
-
-1- شید ساده
-2- شید بلک اوت
-3- زبرا
-4- کرکره فلزی
-""")
-
-        update2 = await client.wait_for(
-            Author(message.author.id) & TEXT,
-            timeout=300
+        await update.message.reply_text(
+            "❌ فقط عدد وارد کنید"
         )
 
-        product = update2.message.text
+        return GET_HEIGHT
 
-        if "1" in product or "شید ساده" in product:
-            await calculate_price(update2.message, "شید ساده")
+# ---------------- رنگ بندی ----------------
 
-        elif "2" in product or "بلک" in product:
-            await calculate_price(update2.message, "شید بلک اوت")
+async def color_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-        elif "3" in product or "زبرا" in product:
-            await calculate_price(update2.message, "زبرا")
+    query = update.callback_query
 
-        elif "4" in product or "کرکره" in product:
-            await calculate_price(update2.message, "کرکره فلزی")
+    await query.answer()
 
-    # -----------------------------------
-    # راهنما
-    # -----------------------------------
+    product_key = query.data.replace("color_", "")
 
-    elif "3" in choice or "راهنما" in choice:
+    colors = PRODUCTS[product_key]["colors"]
 
-        await update.message.reply("""
-🏠 نوع کاربری را انتخاب کنید:
+    text = "🎨 رنگ بندی موجود:\n\n"
 
-1- مسکونی
-2- اداری / تجاری
-""")
+    for color in colors:
+        text += f"{color}\n"
 
-        update3 = await client.wait_for(
-            Author(update.message.author.id) & TEXT,
-            timeout=300
+    await query.message.reply_text(text)
+
+# ---------------- اجرای ربات ----------------
+
+def main():
+
+    app = Application.builder().token(TOKEN).build()
+
+    conv_handler = ConversationHandler(
+
+        entry_points=[
+            CommandHandler("start", start),
+            CallbackQueryHandler(check_join, pattern="^check_join$")
+        ],
+
+        states={
+
+            MAIN_MENU: [
+
+                CallbackQueryHandler(
+                    main_menu,
+                    pattern="^(price|order)$"
+                ),
+
+                CallbackQueryHandler(
+                    suggestion,
+                    pattern="^(office|home)$"
+                ),
+
+                CallbackQueryHandler(
+                    order_links,
+                    pattern="^order_"
+                ),
+
+                CallbackQueryHandler(
+                    start,
+                    pattern="^back_start$"
+                ),
+
+                CallbackQueryHandler(
+                    color_handler,
+                    pattern="^color_"
+                ),
+
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    menu_handler
+                ),
+            ],
+
+            SELECT_PRODUCT: [
+
+                CallbackQueryHandler(
+                    select_product,
+                    pattern="^(shid_simple|shid_blackout|zebra|metal)$"
+                ),
+            ],
+
+            GET_WIDTH: [
+
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    get_width
+                )
+            ],
+
+            GET_HEIGHT: [
+
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    get_height
+                )
+            ],
+        },
+
+        fallbacks=[
+            CommandHandler("start", start),
+            MessageHandler(filters.Regex("^🏠 شروع$"), start)
+        ],
+
+        allow_reentry=True,
+        per_message=False
+    )
+
+    app.add_handler(conv_handler)
+
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^🏠 شروع$"),
+            start
         )
+    )
 
-        answer = update3.message.text
-
-        if "اداری" in answer or "2" in answer:
-
-            await update3.message.reply("""
-🏢 پیشنهاد ما:
-
-🪟 پرده کرکره فلزی
-
-برای استعلام قیمت:
-/start
-""")
-
-        else:
-
-            await update3.message.reply("""
-🏠 پیشنهاد ما:
-
-🪟 پرده شید ساده
-
-یا
-
-🪟 پرده زبرا
-
-برای استعلام قیمت:
-/start
-""")
-
-    # -----------------------------------
-    # ثبت سفارش
-    # -----------------------------------
-
-    elif "2" in choice or "ثبت سفارش" in choice:
-
-        await update.message.reply("""
-🛒 نوع پرده را انتخاب کنید:
-
-1- شید ساده (پیشنهاد مسکونی)
-
-2- شید بلک اوت
-(پیشنهاد اتاق کامپیوتر و ویدیو پروژکتور)
-
-3- زبرا (پیشنهاد مسکونی)
-
-4- کرکره فلزی
-(پیشنهاد اداری و تجاری)
-""")
-
-        update4 = await client.wait_for(
-            Author(update.message.author.id) & TEXT,
-            timeout=300
+    app.add_handler(
+        CallbackQueryHandler(
+            start,
+            pattern="^back_start$"
         )
-
-        p = update4.message.text
-
-        if "1" in p:
-            await update4.message.reply(
-                "🔗 لینک محصول شید ساده:\nYOUR_LINK"
-            )
-
-        elif "2" in p:
-            await update4.message.reply(
-                "🔗 لینک محصول شید بلک اوت:\nYOUR_LINK"
-            )
-
-        elif "3" in p:
-            await update4.message.reply(
-                "🔗 لینک محصول زبرا:\nYOUR_LINK"
-            )
-
-        elif "4" in p:
-            await update4.message.reply(
-                "🔗 لینک محصول کرکره فلزی:\nYOUR_LINK"
-            )
-
-    # -----------------------------------
-    # تماس با ما
-    # -----------------------------------
-
-    elif "4" in choice or "تماس" in choice:
-
-        await update.message.reply(
-            f"{ADDRESS}\n\n{PHONE}\n\n{WORK_TIME}\n\n{WEBSITE}"
-        )
+    )
 
 
-client.run()
+    print("✅ Bot is running...")
+
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
