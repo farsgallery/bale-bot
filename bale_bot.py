@@ -175,4 +175,3 @@ def get_order_type_keyboard():
         [MessageHandler("1️⃣ پرده شید ساده", order_shid_simple)],
         [MessageHandler("2️⃣ پرده شید بلک اوت", order_shid_blackout)],
         [MessageHandler("3️⃣ پرده زبرا", order_zebra)],
-        [MessageHandler("4️⃣ …
