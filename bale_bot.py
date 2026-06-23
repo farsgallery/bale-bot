@@ -1,9 +1,30 @@
-# bale_bot_fixed.py
+from flask import Flask
+from threading import Thread
+from bale import Bot
+import os
 
-async def show_main_menu(message):
-    await message.reply(
-        "یکی از گزینه‌ها را بنویس:\n"
-        "1- استعلام قیمت\n"
-        "2- ثبت سفارش\n"
-        "3- تماس با ما"
-    )
+TOKEN = "1707286533:8RiZ3SLHubKYeU9qMV3WVWx2cKHuGVDIiMg"
+
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "Bale Bot Running"
+
+def run_web():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
+
+Thread(target=run_web).start()
+
+bot = Bot(TOKEN)
+
+@bot.event
+async def on_message(message):
+    text = getattr(message, "text", "")
+
+    if text == "/start":
+        await message.reply("سلام 👋\n\nبه ربات خوش آمدید.")
+
+print("Bot Started...")
+bot.run()
