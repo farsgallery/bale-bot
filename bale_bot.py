@@ -3,7 +3,7 @@ from threading import Thread
 from bale import Bot
 import os
 
-TOKEN = "1707286533:8RiZ3SLHubKYeU9qMV3WVWx2cKHuGVDIiMg"
+TOKEN = "1707286533:SfrV0VrqFr5qWoUC3O-Pte121jWlzA8W3dM"
 
 app = Flask(__name__)
 
@@ -24,7 +24,9 @@ async def on_message(message):
     text = getattr(message, "text", "")
 
     if text == "/start":
-        await message.reply("سلام 👋\n\nبه ربات خوش آمدید.")
+        await message.reply("سلام 👋\n\n به ربات مجموعه هُنری فــارس گـالری خوش آمدید
+
+✨ میتوانید برای استعلام قیمت پرده و ثبت سفارش از این ربات استفاده کنید.")
 
 print("Bot Started...")
 bot.run()
