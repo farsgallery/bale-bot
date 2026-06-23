@@ -24,7 +24,7 @@ async def on_message(message):
     text = getattr(message, "text", "")
 
     if text == "/start":
-        await message.reply("سلام 👋\n\nبه ربات خوش آمدید.")
+        await message.reply("سلام 👋\n\nبه ربات فارس گالری خوش آمدید.")
 
 print("Bot Started...")
 bot.run()
